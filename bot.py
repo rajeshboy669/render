@@ -40,7 +40,7 @@ def run_web():
     """Run Flask web server for Koyeb health check"""
     app.run(host="0.0.0.0", port=8080)
 # ----------------- Environment Variables -----------------
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7613950530:AAEUaQ2Qs8PJYhud4G2eNmG-ZdDJ8xO9JOM")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7899527337:AAG_m7b-hI41iSrvG66flBSUhozjugvfumE")
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb+srv://aaroha:aaroha@cluster0.8z6ob17.mongodb.net/Cluster0?retryWrites=true&w=majority&appName=Cluster0")
 ADLINKFLY_API_URL = "https://linxshort.me/api"
 
