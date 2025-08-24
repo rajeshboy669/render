@@ -6,7 +6,6 @@ import aiohttp
 import requests
 import threading
 from threading import Thread
-from flask import Flask
 from telegram import ReplyKeyboardMarkup, KeyboardButton
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -26,19 +25,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Initialize Flask app for health check
-app = Flask(__name__)
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    try:
-        return 'OK', 200
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        return 'Service Unavailable', 503
-
-def run_web():
-    """Run Flask web server for Koyeb health check"""
-    app.run(host="0.0.0.0", port=8080)
 # ----------------- Environment Variables -----------------
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7899527337:AAG_m7b-hI41iSrvG66flBSUhozjugvfumE")
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb+srv://aaroha:aaroha@cluster0.8z6ob17.mongodb.net/Cluster0?retryWrites=true&w=majority&appName=Cluster0")
@@ -401,7 +388,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_message(update, context)
 
 # Run the Flask app in a separate thread
-Thread(target=app.run, kwargs={'host': '0.0.0.0', 'port': 8000, 'debug': False}).start()
+
 
 def main():
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
