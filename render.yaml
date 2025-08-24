@@ -1,0 +1,13 @@
+services:
+  - type: worker
+    name: telegram-bot
+    env: python
+    plan: free   # or starter/standard depending on your needs
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python3 bot.py"
+    autoDeploy: true
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false   # set this securely in Render dashboard
+      - key: MONGO_URI
+        sync: false   # your MongoDB connection string
