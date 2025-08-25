@@ -155,11 +155,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # -----------------------------
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app.run_polling()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setapi", setapi))
     app.add_handler(CommandHandler("logout", logout))
     app.add_handler(MessageHandler(filters.ALL, handle_message))
 
-    logger.info("🚀 Bot is running...")
-    app.run_polling()
+   if __name__ == "__main__":
+    logger.info("🚀 Bot is starting...")
+    main()
