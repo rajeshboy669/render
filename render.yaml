@@ -1,7 +1,7 @@
 services:
-  - type: web
-    name: adlinkfly-bot
+  - type: worker
+    name: telegram-bot
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
-    plan: free
+    plan: free    # or starter/standard if needed
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python bot.py"
