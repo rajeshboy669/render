@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Environment Variables
 TELEGRAM_TOKEN = os.getenv("7797521990:AAFjqOCQTrdqE4vUyJSxNOI9PjdpsHGF2W4")
-MONGO_URI = os.getenv("MONGO_URI")
+MONGO_URI = os.getenv("mongodb+srv://aaroha:aaroha@cluster0.sohx6w6.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 ADLINKFLY_DOMAIN = os.getenv("https://linxshort.me")  # Example: https://short.yourdomain.com
 ADLINKFLY_API_URL = f"{ADLINKFLY_DOMAIN}/api"
 
