@@ -161,8 +161,5 @@ def main():
     app.add_handler(CommandHandler("logout", logout))
     app.add_handler(MessageHandler(filters.ALL, handle_message))
 
+    logger.info("🚀 Bot is running...")
     app.run_polling()
-
-
-if __name__ == "__main__":
-    main()
