@@ -1,53 +1,58 @@
-import logging
 import os
 import re
 import asyncio
 import aiohttp
-import requests
-import threading
-from threading import Thread
-from telegram import ReplyKeyboardMarkup, KeyboardButton
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ConversationHandler,
-    filters,
-    ContextTypes,
-)
+import logging
 from pymongo import MongoClient
-from pymongo.uri_parser import parse_uri
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# Enable logging
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# Logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize Flask app for health check
+# Environment Variables
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+MONGO_URI = os.getenv("MONGO_URI")
+ADLINKFLY_DOMAIN = os.getenv("ADLINKFLY_DOMAIN")  # Example: https://short.yourdomain.com
+ADLINKFLY_API_URL = f"{ADLINKFLY_DOMAIN}/api"
 
-# ----------------- Environment Variables -----------------
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7899527337:AAG_m7b-hI41iSrvG66flBSUhozjugvfumE")
-MONGODB_URI = os.getenv("MONGODB_URI", "mongodb+srv://aaroha:aaroha@cluster0.8z6ob17.mongodb.net/Cluster0?retryWrites=true&w=majority&appName=Cluster0")
-ADLINKFLY_API_URL = "https://linxshort.me/api"
-
-if not TELEGRAM_BOT_TOKEN or not MONGODB_URI:
-    raise ValueError("Missing required environment variables.")
-
-# ----------------- MongoDB -----------------
-parsed_uri = parse_uri(MONGODB_URI)
-db_name = parsed_uri.get("database")
-if not db_name:
-    raise ValueError("Database name not found in MONGODB_URI.")
-
-client = MongoClient(MONGODB_URI)
-db = client[db_name]
+# MongoDB setup
+mongo_client = MongoClient(MONGO_URI)
+db = mongo_client["adlinkfly_bot"]
 users_collection = db["users"]
 
-# Regular expression to find URLs in text
+# URL regex
 URL_REGEX = re.compile(r'https?://[^\s]+')
 
+
+# -----------------------------
+# Database Helpers
+# -----------------------------
+def get_user_api_key(user_id: int) -> str:
+    user = users_collection.find_one({"user_id": user_id})
+    return user["api_key"] if user and "api_key" in user else None
+
+
+def set_user_api_key(user_id: int, api_key: str):
+    users_collection.update_one(
+        {"user_id": user_id},
+        {"$set": {"api_key": api_key}},
+        upsert=True
+    )
+
+
+def delete_user_api_key(user_id: int):
+    users_collection.delete_one({"user_id": user_id})
+
+
+# -----------------------------
+# Link Shortening
+# -----------------------------
 async def shorten_link(link: str, api_key: str) -> str:
+    """Shorten a single link with AdLinkFly."""
+    if "t.me/" in link or "https://t.me/" in link:
+        return link  # Skip Telegram links
     try:
         params = {"api": api_key, "url": link}
         async with aiohttp.ClientSession() as session:
@@ -60,365 +65,103 @@ async def shorten_link(link: str, api_key: str) -> str:
         logger.error(f"Error shortening link: {e}")
         return link
 
+
 async def process_text(text: str, api_key: str) -> str:
+    """Find all links in text and shorten them concurrently."""
     async def replace_link(match):
         link = match.group(0)
-        if "https://t.me/" in link:
-            return link  # Skip Telegram links
         return await shorten_link(link, api_key)
-    
+
     tasks = [replace_link(match) for match in URL_REGEX.finditer(text)]
     shortened_links = await asyncio.gather(*tasks)
+
     for match, shortened in zip(URL_REGEX.finditer(text), shortened_links):
         text = text.replace(match.group(0), shortened)
     return text
 
-# ----------------- Bot Commands -----------------
-def get_main_menu():
-    keyboard = [
-        [KeyboardButton("🏠 Start")],
-        [KeyboardButton("👤 Account")],
-        [KeyboardButton("📊 Balance"), KeyboardButton("💸 Withdraw")],
-        [KeyboardButton("ℹ️ Help"), KeyboardButton("✨ Features"), KeyboardButton("🔑 Set API")],
-        [KeyboardButton("🚪 Logout")],
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    
-# Modify start to show menu
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_name = update.message.from_user.full_name
-
-    # Signup button
-    keyboard = [[InlineKeyboardButton("📝 Sign Up", url="https://linxshort.me/auth/signup")]]
-    signup_markup = InlineKeyboardMarkup(keyboard)
-
-    # Welcome text
-    welcome_message = (
-        f"👋 Hello {user_name}!\n\n"
-        "🚀 Welcome to *Linxshort BOT* — your personal URL shortener & earnings tracker. 🌐\n\n"
-        "🔗 Just send me a link, and I'll shorten it instantly.\n\n"
-        "💰 I’ll also keep track of your balance, stats, and withdrawals.\n\n"
-        "⚡️ Get started now and experience the power of Linxshort BOT. 💪🔗\n\n"
-        "❓ Need help? Contact 👉 @Linxshort"
-    )
-
-    # Send welcome message + signup button
+# -----------------------------
+# Bot Commands
+# -----------------------------
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        welcome_message,
-        parse_mode="Markdown",
-        reply_markup=signup_markup
+        "👋 Welcome!\n\n"
+        "/setapi <your_api_key> → Save your AdLinkFly API key\n"
+        "/logout → Remove your saved API key\n\n"
+        "Then send me any message (text/photo/video/doc/forwarded), "
+        "I’ll shorten all links (except Telegram links) 🚀"
     )
 
-    # Then send main menu buttons
-    await update.message.reply_text(
-        " ",
-        reply_markup=get_main_menu()
-    )
 
-async def set_api_key(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def setapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("❌ Usage: /setapi <your_api_key>")
+        return
+
+    api_key = context.args[0]
     user_id = update.message.from_user.id
-    api_key = context.args[0] if context.args else None
+
+    set_user_api_key(user_id, api_key)
+    await update.message.reply_text("✅ Your API key has been saved!")
+
+
+async def logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    delete_user_api_key(user_id)
+    await update.message.reply_text("✅ Your API key has been removed. Use /setapi to add a new one.")
+
+
+# -----------------------------
+# Message Handler
+# -----------------------------
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.message
+    user_id = message.from_user.id
+
+    api_key = get_user_api_key(user_id)
     if not api_key:
-        await update.message.reply_text("Please provide an API key. Example: /setapi <API_KEY>")
-        return
-    users_collection.update_one({"user_id": user_id}, {"$set": {"api_key": api_key}}, upsert=True)
-    context.user_data["api_key"] = api_key
-    await update.message.reply_text("API key set successfully!")
-
-async def logout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.message.from_user.id
-    users_collection.delete_one({"user_id": user_id})
-    context.user_data.pop("api_key", None)
-    await update.message.reply_text("You have been logged out.")
-
-async def help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    keyboard = [[InlineKeyboardButton("24/7 support", url="https://t.me/Linxshort_support")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    help_text = (
-    "📌 **Available Commands:**\n\n"
-    "🏠 /start — **Start the bot**\n"
-    "🔑 /setapi `<API_KEY>` — **Set your API key**\n"
-    "🚪 /logout — **Log out**\n"
-    "📊 /balance — **View balance & stats**\n"
-    "💸 /withdraw — **Withdraw your earnings**\n"
-    "ℹ️ /help — **Show this help message**\n\n"
-    "🔗 **Just send me any link, and I’ll shorten it automatically.**"
-)
-    await update.message.reply_text(help_text, reply_markup=reply_markup)
-
-async def features(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    features_text = (
-    "✨ Bot Features:\n\n"
-    "1️⃣ URL Shortening — Instantly shorten your links\n"
-    "2️⃣ Bulk Processing — Shorten multiple links at once\n"
-    "3️⃣ Telegram Exclusion — Skip Telegram links automatically\n"
-    "4️⃣ Easy API Setup — /setapi <API_KEY>\n"
-    "5️⃣ Logout — /logout\n"
-    "6️⃣ Balance & Stats — /balance\n"
-    "7️⃣ Withdraw Earnings — /withdraw\n\n"
-    )
-    await update.message.reply_text(features_text)
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    try:
-        user_id = update.message.from_user.id
-        api_key = context.user_data.get("api_key")
-        if not api_key:
-            user_data = users_collection.find_one({"user_id": user_id})
-            api_key = user_data.get("api_key") if user_data else None
-            if api_key:
-                context.user_data["api_key"] = api_key
-            else:
-                await update.message.reply_text("Please set your Linxshort API key using /setapi.")
-                return
-
-        text = update.message.text or update.message.caption
-        if text:
-            processed_text = await process_text(text, api_key)
-            if update.message.text:
-                await update.message.reply_text(processed_text)
-            elif update.message.caption:
-                await update.message.reply_photo(update.message.photo[-1].file_id, caption=processed_text)
-    except Exception as e:
-        logger.error(f"Error handling message: {e}")
-        await update.message.reply_text("An error occurred. Please try again.")
-        
-# ----------------- Balance & Withdraw -----------------
-async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    user_data = users_collection.find_one({"user_id": user_id})
-    api_key = context.user_data.get("api_key") or (user_data.get("api_key") if user_data else None)
-
-    if not api_key:
-        await update.message.reply_text(
-            "⚠️ You haven’t set your API key yet.\n\n"
-            "👉 Please use /setapi <YOUR_API_KEY> and try again."
-        )
+        await message.reply_text("⚠️ You haven’t set your API key yet!\nUse /setapi <your_api_key>")
         return
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"https://linxshort.me/balance-api.php?api={api_key}", timeout=10) as resp:
-                data = await resp.json()
+    # Case 1: Text
+    if message.text:
+        new_text = await process_text(message.text, api_key)
+        await message.reply_text(new_text)
 
-        if data.get("status") == "success":
-            msg = (
-                f"👤 Username: {data['username']}\n"
-                f"💰 Balance: {data['balance']}\n"
-                f"✅ Withdrawn: {data['withdrawn']}\n"
-                f"🔗 Total Links: {data['total_links']}\n"
-                f"💸 Referrals: {data['referrals']}"
-            )
-        else:
-            msg = f"❌ Error: {data.get('message', 'Unknown error')}"
+    # Case 2: Photo with caption
+    elif message.photo:
+        caption = await process_text(message.caption or "", api_key)
+        file_id = message.photo[-1].file_id
+        await message.reply_photo(photo=file_id, caption=caption)
 
-        await update.message.reply_text(msg)
+    # Case 3: Document with caption
+    elif message.document:
+        caption = await process_text(message.caption or "", api_key)
+        file_id = message.document.file_id
+        await message.reply_document(document=file_id, caption=caption)
 
-    except Exception as e:
-        await update.message.reply_text(f"❌ Failed to fetch balance: {e}")
-        
-# ----------------- Account Info -----------------
-async def account(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user = users_collection.find_one({"user_id": user_id})
+    # Case 4: Video with caption
+    elif message.video:
+        caption = await process_text(message.caption or "", api_key)
+        file_id = message.video.file_id
+        await message.reply_video(video=file_id, caption=caption)
 
-    if not user:
-        await update.message.reply_text("⚠️ You are not logged in. Use /login <API_KEY>")
-        return
-
-    api_key = user["api_key"]
-    url = f"https://linxshort.me/account-api.php?api={api_key}"
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                data = await resp.json()
-
-        if data.get("status") != "success":
-            await update.message.reply_text("❌ Invalid API key or error fetching data.")
-            return
-
-        # Format response
-        msg = (
-    f"👤 <b>Account Details</b>\n\n"
-    f"👤 Username: {data.get('username')}\n"
-    f"📧 Email: {data.get('email')}\n"
-    f"🔑 API Token: {data.get('api_token')}\n\n"
-    f"💰 Publisher Earnings: {data.get('publisher_earnings')}\n"
-    f"🤝 Referral Earnings: {data.get('referral_earnings')}\n\n"
-    f"👤 Name: {data.get('first_name')} {data.get('last_name')}\n"
-    f"📞 Phone: {data.get('phone_number')}\n\n"
-    f"🏠 Address:\n"
-    f"🏠 Address: {data.get('address1')}\n"
-    f"🌆 City: {data.get('city')}\n"
-    f"🗺️ State: {data.get('state')}\n"
-    f"📮 ZIP: {data.get('zip')}\n"
-    f"🌍 Country: {data.get('country')}\n\n"
-    f"💳 Withdrawal Method: {data.get('withdrawal_method')}\n"
-)
-
-        await update.message.reply_text(msg, parse_mode="HTML")
-
-    except Exception as e:
-        logger.error(e)
-        await update.message.reply_text("⚠️ Error fetching account details.")
-
-# ----------------- Withdraw Feature -----------------
-WITHDRAW_AMOUNT, WITHDRAW_METHOD, WITHDRAW_DETAILS = range(3)
-
-async def withdraw_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("💰 Enter the amount you want to withdraw or use /cancel to cancel withdraw process!!!:")
-    return WITHDRAW_AMOUNT
-
-async def withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        amount = float(update.message.text)
-        if amount <= 0:
-            await update.message.reply_text("❌ Amount must be greater than 0. Enter again or use /cancel to cancel withdraw process!!!")
-            return WITHDRAW_AMOUNT
-        context.user_data["withdraw_amount"] = amount
-
-        user_id = update.message.from_user.id
-        user_data = users_collection.find_one({"user_id": user_id})
-        api_key = context.user_data.get("api_key") or user_data.get("api_key")
-        resp = requests.get(f"https://linxshort.me/withdraw-methods-api.php?api={api_key}", timeout=10).json()
-
-        if resp["status"] != "success" or not resp["methods"]:
-            await update.message.reply_text("❌ No withdrawal methods found use /cancel to cancel withdraw process!!!.")
-            return ConversationHandler.END
-
-        methods = [m for m in resp["methods"] if m["status"]]
-        context.user_data["withdraw_methods"] = methods
-
-        buttons = [[InlineKeyboardButton(m["name"], callback_data=m["id"])] for m in methods]
-        reply_markup = InlineKeyboardMarkup(buttons)
-        await update.message.reply_text("Select a withdrawal method:", reply_markup=reply_markup)
-        return WITHDRAW_METHOD
-
-    except ValueError:
-        await update.message.reply_text("❌ Invalid amount. Enter a numeric value or use /cancel to cancel withdraw process!!!:")
-        return WITHDRAW_AMOUNT
-    except Exception as e:
-        await update.message.reply_text(f"❌ *Error* use /cancel to cancel withdraw process!!!: {e}")
-        return ConversationHandler.END
-
-async def withdraw_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    method_id = query.data
-    context.user_data["withdraw_method"] = method_id
-
-    method = next((m for m in context.user_data["withdraw_methods"] if m["id"] == method_id), None)
-    if not method:
-        await query.edit_message_text("❌ Invalid method selected use /cancel to cancel withdraw process!!!.")
-        return ConversationHandler.END
-
-    context.user_data["withdraw_method_name"] = method["name"]
-
-    # Only ask for account if method requires it
-    if method.get("account_required", False):
-        await query.edit_message_text(f"Enter your account info for {method['name']}:")
-        return WITHDRAW_DETAILS
     else:
-        return await submit_withdrawal(query, context)
-
-async def withdraw_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["withdraw_account"] = update.message.text
-    return await submit_withdrawal(update, context)
-
-async def submit_withdrawal(update_obj, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        user_id = update_obj.from_user.id
-        user_data = users_collection.find_one({"user_id": user_id})
-        api_key = context.user_data.get("api_key") or user_data.get("api_key")
-
-        payload = {
-            "api": api_key,
-            "amount": context.user_data["withdraw_amount"],
-            "method": context.user_data["withdraw_method"],
-        }
-        if "withdraw_account" in context.user_data:
-            payload["account"] = context.user_data["withdraw_account"]
-
-        resp = requests.get(f"https://linxshort.me/withdraw-api.php", params=payload, timeout=10).json()
-        if resp["status"] == "success":
-            msg = f"✅ Withdrawal request submitted!\nAmount: {payload['amount']}\nMethod: {context.user_data['withdraw_method_name']}"
-        else:
-            msg = f"❌ Withdrawal failed use /cancel to cancel withdraw process!!!: {resp.get('message', 'Unknown error')}"
-
-        if isinstance(update_obj, Update):
-            await update_obj.message.reply_text(msg)
-        else:
-            await update_obj.edit_message_text(msg)
-        return ConversationHandler.END
-    except Exception as e:
-        await update_obj.message.reply_text(f"❌ *Error* use /cancel to cancel withdraw process!!!: {e}")
-        return ConversationHandler.END
-
-async def cancel_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Withdrawal canceled.")
-    return ConversationHandler.END
+        await message.reply_text("⚠️ Unsupported message type.")
 
 
-# ----------------- Handle Menu Buttons -----------------
-async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-
-    if text == "🏠 Start":
-        await start(update, context)
-    elif text == "🔑 Set API":
-        await update.message.reply_text("Use /setapi <API_KEY> to set your API key.")
-    elif text == "📊 Balance":
-        await balance(update, context)
-    elif text == "👤 Account":
-        await account(update, context)
-    elif text == "🚪 Logout":
-        await logout(update, context)
-    elif text == "ℹ️ Help":
-        await help(update, context)
-    elif text == "✨ Features":
-        await features(update, context)
-    else:
-        await handle_message(update, context)
-
-# Run the Flask app in a separate thread
-
-
+# -----------------------------
+# Run Bot
+# -----------------------------
 def main():
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    app = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    # Withdraw conversation
-    withdraw_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler("withdraw", withdraw_start),
-            MessageHandler(filters.Regex("^💸 Withdraw$"), withdraw_start)  # menu button also works
-        ],
-        states={
-            WITHDRAW_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, withdraw_amount)],
-            WITHDRAW_METHOD: [CallbackQueryHandler(withdraw_method)],
-            WITHDRAW_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, withdraw_details)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel_withdraw)],
-    )
-    application.add_handler(withdraw_handler)   # 👈 add this FIRST
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("setapi", setapi))
+    app.add_handler(CommandHandler("logout", logout))
+    app.add_handler(MessageHandler(filters.ALL, handle_message))
 
-    # Other commands
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("setapi", set_api_key))
-    application.add_handler(CommandHandler("logout", logout))
-    application.add_handler(CommandHandler("help", help))
-    application.add_handler(CommandHandler("features", features))
-    application.add_handler(CommandHandler("balance", balance))
-    application.add_handler(CommandHandler("account", account))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, menu_handler))
-    application.add_handler(MessageHandler(filters.PHOTO, handle_message))
-    application.run_polling()
+    app.run_polling()
 
 
 if __name__ == "__main__":
