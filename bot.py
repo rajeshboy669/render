@@ -166,3 +166,6 @@ def main():
 
     app.run_polling()
 
+if __name__ == "__main__":
+    logging.info("🚀 Bot is starting...")
+    main()
