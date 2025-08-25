@@ -1,7 +1,6 @@
 services:
   - type: worker
     name: telegram-bot
-    env: python
-    plan: free    # or starter/standard if needed
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python bot.py"
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
