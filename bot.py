@@ -12,9 +12,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Environment Variables
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_TOKEN = os.getenv("7797521990:AAFjqOCQTrdqE4vUyJSxNOI9PjdpsHGF2W4")
 MONGO_URI = os.getenv("MONGO_URI")
-ADLINKFLY_DOMAIN = os.getenv("ADLINKFLY_DOMAIN")  # Example: https://short.yourdomain.com
+ADLINKFLY_DOMAIN = os.getenv("https://linxshort.me")  # Example: https://short.yourdomain.com
 ADLINKFLY_API_URL = f"{ADLINKFLY_DOMAIN}/api"
 
 # MongoDB setup
