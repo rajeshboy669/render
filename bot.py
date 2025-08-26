@@ -8,6 +8,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Con
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -35,22 +36,20 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     await update.message.reply_text("🔑 Logging into Terabox... Please wait.")
 
-    try:
-        # Setup Selenium headless Chrome
-        options = Options()
-        options.binary_location = os.getenv("CHROME_BIN", "/usr/bin/chromium")
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
+try:
+    # Setup Selenium headless Chrome
+    options = Options()
+    options.binary_location = os.getenv("CHROME_BIN", "/usr/bin/chromium")
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
 
-        driver = webdriver.Chrome(
-            executable_path=os.getenv("CHROMEDRIVER", "/usr/bin/chromedriver"),
-            options=options
-        )
+    service = Service(os.getenv("CHROMEDRIVER", "/usr/bin/chromedriver"))
+    driver = webdriver.Chrome(service=service, options=options)
 
-        # Open Terabox
-        driver.get("https://www.terabox.com")
-        time.sleep(3)
+    # Open Terabox
+    driver.get("https://www.terabox.com")
+    time.sleep(3)
 
         # Login process
         try:
