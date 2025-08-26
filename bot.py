@@ -1,6 +1,7 @@
 import os
 import logging
 import time
+import requests
 from flask import Flask, request
 from telegram import Update, Bot
 from telegram.ext import Dispatcher, CommandHandler, MessageHandler, filters, CallbackContext
@@ -21,7 +22,7 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- Function: Login to Terabox ---
+# --- Function: Login to Terabox and return cookies ---
 def login_and_get_cookies():
     options = Options()
     options.add_argument("--headless")
@@ -33,40 +34,80 @@ def login_and_get_cookies():
     try:
         driver.get("https://www.terabox.com")
 
-        time.sleep(5)  # allow page to load
+        time.sleep(5)
 
-        # Find and fill inputs (selectors may need adjustments)
+        # login form
         email_input = driver.find_element(By.NAME, "email")
         password_input = driver.find_element(By.NAME, "password")
 
         email_input.send_keys(EMAIL)
         password_input.send_keys(PASSWORD)
 
-        # Click login
         submit_btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
         submit_btn.click()
 
-        time.sleep(7)  # wait for login
+        time.sleep(7)
 
         cookies = driver.get_cookies()
-        cookie_string = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
+        cookie_dict = {c['name']: c['value'] for c in cookies}
 
-        return cookie_string
+        return cookie_dict
     finally:
         driver.quit()
 
+# --- Function: Get direct download link ---
+def get_direct_link(file_url, cookies):
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+    }
+
+    # Use cookies
+    session = requests.Session()
+    for k, v in cookies.items():
+        session.cookies.set(k, v)
+
+    # Fetch the page
+    resp = session.get(file_url, headers=headers)
+    if "window.location.href" in resp.text:
+        # Some Terabox pages auto-redirect with JS
+        import re
+        m = re.search(r'window\.location\.href\s*=\s*"(.*?)"', resp.text)
+        if m:
+            return m.group(1)
+
+    # Otherwise, look for download API endpoint
+    if "download" in resp.url:
+        return resp.url
+
+    return None
+
 # --- Handlers ---
 def start(update: Update, context: CallbackContext):
-    update.message.reply_text("👋 Hi! Send me a Terabox link and I’ll try to fetch it.")
+    update.message.reply_text("👋 Hi! Send me a Terabox link and I’ll fetch the file.")
 
 def handle_message(update: Update, context: CallbackContext):
-    link = update.message.text
-    update.message.reply_text("⏳ Logging into Terabox...")
+    link = update.message.text.strip()
+    update.message.reply_text("⏳ Logging into Terabox and fetching your file...")
 
     try:
-        cookie_string = login_and_get_cookies()
-        # TODO: Use cookies + link to fetch the real file
-        update.message.reply_text(f"✅ Logged in! Got cookies.\n\nExample: {cookie_string[:100]}...")
+        cookies = login_and_get_cookies()
+        direct_link = get_direct_link(link, cookies)
+
+        if not direct_link:
+            update.message.reply_text("❌ Could not resolve direct link. Maybe login is required.")
+            return
+
+        update.message.reply_text(f"✅ Direct link: {direct_link}")
+
+        # Download small/medium files and send to Telegram
+        resp = requests.get(direct_link, stream=True)
+        filename = link.split("/")[-1] or "file.bin"
+
+        if int(resp.headers.get("Content-Length", 0)) < 50 * 1024 * 1024:  # <50MB
+            update.message.reply_document(document=resp.content, filename=filename)
+        else:
+            update.message.reply_text("⚠️ File too large to send via Telegram. Use the direct link above.")
+
     except Exception as e:
         logger.error("Error: %s", str(e))
         update.message.reply_text(f"❌ Error: {str(e)}")
