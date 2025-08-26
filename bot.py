@@ -20,7 +20,7 @@ def home():
     return "✅ Telegram Terabox Bot running!"
 
 # --- Config ---
-TOKEN = os.getenv("TELEGRAM_TOKEN", "7797521990:AAFjqOCQTrdqE4vUyJSxNOI9PjdpsHGF2W4")
+TOKEN = os.getenv("TOKEN", "7797521990:AAFjqOCQTrdqE4vUyJSxNOI9PjdpsHGF2W4")
 EMAIL = os.getenv("TERABOX_EMAIL", "realaaroha@gmail.com")
 PASSWORD = os.getenv("TERABOX_PASSWORD", "@aaroha123")
 
@@ -111,7 +111,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------- MAIN APP ---------------- #
 
 def main():
-    app_telegram = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app_telegram = ApplicationBuilder().token(TOKEN).build()
 
     app_telegram.add_handler(CommandHandler("start", start))
     app_telegram.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
