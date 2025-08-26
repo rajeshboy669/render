@@ -52,7 +52,7 @@ try:
     time.sleep(3)
 
         # Login process
-        try:
+    try:
             login_btn = driver.find_element(By.XPATH, "//a[contains(@class,'login-button')]")
             login_btn.click()
             time.sleep(2)
@@ -72,7 +72,7 @@ try:
         time.sleep(6)
 
         # Extract download button link
-        try:
+    try:
             dl_button = driver.find_element(By.XPATH, "//a[contains(@class,'g-button')]")
             dl_link = dl_button.get_attribute("href")
         except Exception:
