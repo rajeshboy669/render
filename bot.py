@@ -1,21 +1,4 @@
 import os
-import re
-import json
-import time
-import requests
-from pathlib import Path
-from tempfile import NamedTemporaryFile
-from urllib.parse import urlparse
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
-
-from playwright.sync_api import sync_playwright
-
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7797521990:AAFjqOCQTrdqE4vUyJSxNOI9PjdpsHGF2W4")
-TB_EMAIL = os.getenv("TB_EMAIL", "realaaroha@gmail.com")
-TB_PASSWORD = os.getenv("TB_PASSWORD", "@aaroha123")
-
-import os
 import logging
 import time
 from flask import Flask, request
