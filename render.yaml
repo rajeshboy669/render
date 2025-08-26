@@ -3,5 +3,12 @@ services:
     name: terabox-bot
     env: python
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "python bot.py"
+    startCommand: "python -m playwright install chromium && python bot.py"
     plan: free
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: TB_EMAIL
+        sync: false
+      - key: TB_PASSWORD
+        sync: false
